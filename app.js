@@ -420,18 +420,82 @@ document.addEventListener('DOMContentLoaded', () => {
         const kmlFooter = '</Document>\n</kml>';
         
         let placemarks = '';
-        
-        coordinateData.forEach(data => {
-            placemarks += `
-        <Placemark>
-            <name>${data.index}</name>
-            <description>Type: ${data.type}</description>
-            <Point>
-                <coordinates>${data.lng},${data.lat},${data.elevation}</coordinates>
-            </Point>
-        </Placemark>`;
+        let currentFeature = null;
+        let currentCoordinates = [];
+
+        coordinateData.forEach((data, index) => {
+            // If this is a new feature type or the first item
+            if (!currentFeature || currentFeature !== data.type) {
+                // Close previous placemark if it exists
+                if (currentFeature) {
+                    if (currentFeature === 'Polígono') {
+                        placemarks += `
+            <Placemark>
+                <name>Polygon</name>
+                <Polygon>
+                    <outerBoundaryIs>
+                        <LinearRing>
+                            <coordinates>${currentCoordinates.join(' ')}</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>`;
+                    } else if (currentFeature === 'Línea') {
+                        placemarks += `
+            <Placemark>
+                <name>Polyline</name>
+                <LineString>
+                    <coordinates>${currentCoordinates.join(' ')}</coordinates>
+                </LineString>
+            </Placemark>`;
+                    }
+                    
+                    // Reset for new feature
+                    currentCoordinates = [];
+                }
+
+                // Start new feature
+                currentFeature = data.type;
+            }
+
+            // Add coordinate
+            currentCoordinates.push(`${data.lng},${data.lat},${data.elevation}`);
+
+            // For Point, create a separate placemark
+            if (data.type === 'Punto') {
+                placemarks += `
+            <Placemark>
+                <name>Point ${data.index}</name>
+                <Point>
+                    <coordinates>${data.lng},${data.lat},${data.elevation}</coordinates>
+                </Point>
+            </Placemark>`;
+            }
         });
-        
+
+        // Handle the last feature
+        if (currentFeature === 'Polígono') {
+            placemarks += `
+            <Placemark>
+                <name>Polygon</name>
+                <Polygon>
+                    <outerBoundaryIs>
+                        <LinearRing>
+                            <coordinates>${currentCoordinates.join(' ')}</coordinates>
+                        </LinearRing>
+                    </outerBoundaryIs>
+                </Polygon>
+            </Placemark>`;
+        } else if (currentFeature === 'Línea') {
+            placemarks += `
+            <Placemark>
+                <name>Polyline</name>
+                <LineString>
+                    <coordinates>${currentCoordinates.join(' ')}</coordinates>
+                </LineString>
+            </Placemark>`;
+        }
+
         return kmlHeader + placemarks + kmlFooter;
     }
 
