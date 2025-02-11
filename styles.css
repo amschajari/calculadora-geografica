@@ -228,10 +228,52 @@ header {
     background-color: #7B1FA2;
 }
 
-.modal-buttons button:last-child {
-    background-color: #4CAF50; /* Green for KML export */
+.modal-buttons button#copy-btn {
+    background-color: #9E9E9E; /* Gris */
 }
 
-.modal-buttons button:last-child:hover {
+.modal-buttons button#copy-btn:hover {
+    background-color: #757575;
+}
+
+.modal-buttons button#csv-btn {
+    background-color: #FF9800; /* Naranja */
+    color: white;
+}
+
+.modal-buttons button#csv-btn:hover {
+    background-color: #F57C00; /* Naranja más oscuro para el hover */
+}
+
+.modal-buttons button#kml-btn {
+    background-color: #9C27B0; /* Magenta */
+}
+
+.modal-buttons button#kml-btn:hover {
+    background-color: #7B1FA2;
+}
+
+.modal-buttons button#xls-btn {
+    background-color: #4CAF50; /* Verde */
+}
+
+.modal-buttons button#xls-btn:hover {
     background-color: #45a049;
+}
+
+.modal-buttons button#geojson-btn {
+    background-color: #5D4037; /* Marrón oscuro */
+}
+
+.modal-buttons button#geojson-btn:hover {
+    background-color: #3E2723;
+}
+
+.subtitle {
+    text-align: center;
+    font-size: 1.1em;  
+    color: #666;
+    margin-top: -10px;
+    margin-bottom: 10px;
+    padding: 0 20px;
 }

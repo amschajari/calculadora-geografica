@@ -226,9 +226,17 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const polygonFeature = turf.polygon([turfCoords]);
             const polygonArea = turf.area(polygonFeature);
-            return `Área: ${polygonArea >= 1000000 
-                ? `${(polygonArea / 1000000).toFixed(2)} km²` 
-                : `${polygonArea.toFixed(2)} m²`}`;
+            
+            // Adjust area units based on size
+            if (polygonArea < 10000) {
+                return `Área: ${polygonArea.toFixed(2)} m²`;
+            } else if (polygonArea < 1000000) {
+                const hectares = (polygonArea / 10000).toFixed(2);
+                return `Área: ${hectares} Ha`;
+            } else {
+                const squareKilometers = (polygonArea / 1000000).toFixed(2);
+                return `Área: ${squareKilometers} km²`;
+            }
         }
         
         if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
@@ -342,10 +350,47 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'Desconocido';
     }
 
-    // Function to generate coordinate data
-    function generateCoordinateData() {
+    // Updated function to get elevation with improved error handling and fallback
+    async function getElevation(lat, lng) {
+        const apis = [
+            `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`,
+            `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/identify?geometryType=esriGeometryPoint&geometry=${lng},${lat}&returnGeometry=false&returnZ=true&f=json`
+        ];
+
+        for (const apiUrl of apis) {
+            try {
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    console.warn(`API request failed: ${apiUrl}`);
+                    continue;
+                }
+                
+                const data = await response.json();
+                
+                // Handle Open Elevation API response
+                if (data.results && data.results.length > 0 && data.results[0].elevation !== undefined) {
+                    return data.results[0].elevation;
+                }
+                
+                // Handle USGS National Map API response
+                if (data.value !== undefined) {
+                    return data.value;
+                }
+            } catch (error) {
+                console.warn(`Error fetching elevation from ${apiUrl}:`, error);
+            }
+        }
+        
+        return 'N/A';
+    }
+
+    // Function to generate coordinate data with elevation
+    async function generateCoordinateData() {
         const coordinateData = [];
-        let index = 1;
+        let polygonCounter = 1;
+        let polylineCounter = 1;
+        let pointCounter = 1;
 
         drawnItems.eachLayer((layer) => {
             const type = getLayerType(layer);
@@ -355,47 +400,59 @@ document.addEventListener('DOMContentLoaded', () => {
                     const coords = layer.getLatLngs()[0];
                     coords.forEach((point, pointIndex) => {
                         coordinateData.push({
-                            index: `${index}.${pointIndex + 1}`,
+                            entityNumber: polygonCounter,
                             type: type,
+                            vertices: pointIndex + 1,
                             lat: point.lat.toFixed(6),
                             lng: point.lng.toFixed(6),
-                            elevation: 'N/A'
+                            elevationPromise: getElevation(point.lat, point.lng)
                         });
                     });
+                    polygonCounter++;
                 } else if (type === 'Línea') {
                     const coords = layer.getLatLngs();
                     coords.forEach((point, pointIndex) => {
                         coordinateData.push({
-                            index: `${index}.${pointIndex + 1}`,
+                            entityNumber: polylineCounter,
                             type: type,
+                            vertices: pointIndex + 1,
                             lat: point.lat.toFixed(6),
                             lng: point.lng.toFixed(6),
-                            elevation: 'N/A'
+                            elevationPromise: getElevation(point.lat, point.lng)
                         });
                     });
+                    polylineCounter++;
                 } else if (type === 'Punto') {
                     const point = layer.getLatLng();
                     coordinateData.push({
-                        index: index.toString(),
+                        entityNumber: pointCounter,
                         type: type,
+                        vertices: 1,
                         lat: point.lat.toFixed(6),
                         lng: point.lng.toFixed(6),
-                        elevation: 'N/A'
+                        elevationPromise: getElevation(point.lat, point.lng)
                     });
+                    pointCounter++;
                 }
-                
-                index++;
             } catch (error) {
                 console.error(`Error processing layer of type ${type}:`, error);
             }
         });
 
-        return coordinateData;
+        // Resolve elevation promises
+        const resolvedData = await Promise.all(
+            coordinateData.map(async (data) => ({
+                ...data,
+                elevation: await data.elevationPromise
+            }))
+        );
+
+        return resolvedData.map(({ elevationPromise, ...rest }) => rest);
     }
 
     // Function to populate export modal
-    function populateExportModal() {
-        const coordinateData = generateCoordinateData();
+    async function populateExportModal() {
+        const coordinateData = await generateCoordinateData();
         
         // Clear existing table rows
         exportTableBody.innerHTML = '';
@@ -404,8 +461,9 @@ document.addEventListener('DOMContentLoaded', () => {
         coordinateData.forEach(data => {
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${data.index}</td>
+                <td>${data.entityNumber}</td>
                 <td>${data.type}</td>
+                <td>${data.vertices}</td>
                 <td>${data.lat}</td>
                 <td>${data.lng}</td>
                 <td>${data.elevation}</td>
@@ -465,7 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.type === 'Punto') {
                 placemarks += `
             <Placemark>
-                <name>Point ${data.index}</name>
+                <name>Point ${data.vertices}</name>
                 <Point>
                     <coordinates>${data.lng},${data.lat},${data.elevation}</coordinates>
                 </Point>
@@ -499,11 +557,88 @@ document.addEventListener('DOMContentLoaded', () => {
         return kmlHeader + placemarks + kmlFooter;
     }
 
+    // Function to generate GeoJSON
+    function generateGeoJSON(coordinateData) {
+        const features = [];
+        let currentFeature = null;
+        let currentCoordinates = [];
+        let featureType = null;
+
+        coordinateData.forEach((data, index) => {
+            // If this is a new feature type or the first item
+            if (!currentFeature || currentFeature !== data.type) {
+                // Close previous feature if it exists
+                if (currentFeature) {
+                    const featureObj = {
+                        type: 'Feature',
+                        geometry: {
+                            type: featureType === 'Polígono' ? 'Polygon' : 
+                                  featureType === 'Línea' ? 'LineString' : 
+                                  'Point',
+                            coordinates: featureType === 'Polígono' ? [currentCoordinates] : currentCoordinates
+                        },
+                        properties: {
+                            name: `${currentFeature} ${features.length + 1}`
+                        }
+                    };
+                    features.push(featureObj);
+                    
+                    // Reset for new feature
+                    currentCoordinates = [];
+                }
+
+                // Start new feature
+                currentFeature = data.type;
+                featureType = data.type;
+            }
+
+            // Add coordinate based on type
+            if (data.type === 'Punto') {
+                currentCoordinates = [parseFloat(data.lng), parseFloat(data.lat)];
+                
+                const featureObj = {
+                    type: 'Feature',
+                    geometry: {
+                        type: 'Point',
+                        coordinates: currentCoordinates
+                    },
+                    properties: {
+                        name: `${currentFeature} ${features.length + 1}`
+                    }
+                };
+                features.push(featureObj);
+            } else {
+                // For polylines and polygons, add coordinates in [lon, lat] order
+                currentCoordinates.push([parseFloat(data.lng), parseFloat(data.lat)]);
+            }
+        });
+
+        // Handle the last feature if it's a polyline or polygon
+        if (currentFeature === 'Polígono' || currentFeature === 'Línea') {
+            const featureObj = {
+                type: 'Feature',
+                geometry: {
+                    type: currentFeature === 'Polígono' ? 'Polygon' : 'LineString',
+                    coordinates: currentFeature === 'Polígono' ? [currentCoordinates] : currentCoordinates
+                },
+                properties: {
+                    name: `${currentFeature} ${features.length + 1}`
+                }
+            };
+            features.push(featureObj);
+        }
+
+        return {
+            type: 'FeatureCollection',
+            features: features
+        };
+    }
+
     // Show export modal
-    exportBtn.addEventListener('click', () => {
+    exportBtn.addEventListener('click', async () => {
         // Only show modal if there are drawn items
         if (drawnItems.getLayers().length > 0) {
-            populateExportModal();
+            await populateExportModal();
             exportModal.style.display = 'block';
         } else {
             alert('No hay elementos para exportar');
@@ -516,10 +651,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Copy to clipboard
-    copyBtn.addEventListener('click', () => {
-        const coordinateData = generateCoordinateData();
+    copyBtn.addEventListener('click', async () => {
+        const coordinateData = await generateCoordinateData();
         const clipboardText = coordinateData.map(data => 
-            `${data.index}\t${data.type}\t${data.lat}\t${data.lng}\t${data.elevation}`
+            `${data.type}\t${data.vertices}\t${data.lat}\t${data.lng}\t${data.elevation}`
         ).join('\n');
         
         navigator.clipboard.writeText(clipboardText).then(() => {
@@ -529,13 +664,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Export to CSV
-    csvBtn.addEventListener('click', () => {
-        const coordinateData = generateCoordinateData();
+    csvBtn.addEventListener('click', async () => {
+        const coordinateData = await generateCoordinateData();
         const csvContent = [
-            'Índice,Tipo,Latitud,Longitud,Elevación',
+            'Tipo,Vértices,Latitud,Longitud,Elevación',
             ...coordinateData.map(data => 
-                `${data.index},${data.type},${data.lat},${data.lng},${data.elevation}`
+                `${data.type},${data.vertices},${data.lat},${data.lng},${data.elevation}`
             )
         ].join('\n');
 
@@ -551,8 +685,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Export to KML
-    kmlBtn.addEventListener('click', () => {
-        const coordinateData = generateCoordinateData();
+    kmlBtn.addEventListener('click', async () => {
+        const coordinateData = await generateCoordinateData();
         const kmlContent = generateKML(coordinateData);
 
         const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
@@ -564,6 +698,55 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    });
+
+    // Add GeoJSON export button
+    const geojsonBtn = document.createElement('button');
+    geojsonBtn.id = 'geojson-btn';
+    geojsonBtn.textContent = 'Exportar GeoJSON';
+    document.querySelector('.modal-buttons').appendChild(geojsonBtn);
+
+    // Add event listener for GeoJSON export
+    geojsonBtn.addEventListener('click', async () => {
+        const coordinateData = await generateCoordinateData();
+        const geoJSONContent = generateGeoJSON(coordinateData);
+
+        const blob = new Blob([JSON.stringify(geoJSONContent, null, 2)], { type: 'application/geo+json' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'coordenadas_exportadas.geojson');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+
+    // Add XLS export button
+    const xlsBtn = document.createElement('button');
+    xlsBtn.id = 'xls-btn';
+    xlsBtn.textContent = 'Exportar XLS';
+    document.querySelector('.modal-buttons').appendChild(xlsBtn);
+
+    // Add event listener for XLS export
+    xlsBtn.addEventListener('click', async () => {
+        const coordinateData = await generateCoordinateData();
+        
+        // Prepare data for Excel export
+        const worksheet = XLSX.utils.json_to_sheet(coordinateData.map(data => ({
+            'Tipo': data.type,
+            'Vértices': data.vertices,
+            'Latitud': data.lat,
+            'Longitud': data.lng,
+            'Elevación': data.elevation
+        })));
+
+        // Create workbook
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Coordenadas');
+
+        // Export file
+        XLSX.writeFile(workbook, 'coordenadas_exportadas.xlsx');
     });
 
     // Close modal if clicked outside

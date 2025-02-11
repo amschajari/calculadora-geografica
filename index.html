@@ -1,14 +1,17 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Calculadora Geográfica</title>
+    <title>Calcula Distancia, Área y Coordenadas Online</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
     <link rel="stylesheet" href="styles.css">
+    <!-- Add SheetJS library for Excel export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
 </head>
 <body>
     <header>
-        <h1>Calcula Distancia, Área y Coordenadas en Línea</h1>
+        <h1>Calcula Distancia, Área y Coordenadas Online</h1>
+        <p class="subtitle">Calcula distancias, áreas y coordenadas geográficas. Exporta los resultados obtenidos a CSV, KML, GeoJSON y XLS</p>
         <div class="button-container">
             <button id="clear-btn">🧹 Limpiar marcadores</button>
             <button id="edit-btn">Editar</button>
@@ -35,9 +38,10 @@
                     <tr>
                         <th>#</th>
                         <th>Tipo</th>
+                        <th>Vértices</th>
                         <th>Latitud</th>
                         <th>Longitud</th>
-                        <th>Elevación</th>
+                        <th>Elevación (m)</th>
                     </tr>
                 </thead>
                 <tbody id="export-table-body">
