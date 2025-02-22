@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="styles.css">
     <!-- Add SheetJS library for Excel export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.5/xlsx.full.min.js"></script>
+    <!-- NUEVO: Agregar proj4js para conversiones UTM -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.8.0/proj4.js"></script>
 </head>
 <body>
     <header>
@@ -31,7 +33,7 @@
     <!-- Coordinates Export Modal -->
     <div id="export-modal" class="modal">
         <div class="modal-content">
-            <span class="close-btn">&times;</span>
+            <span class="close-btn">×</span>
             <h2>Coordenadas Exportadas</h2>
             <table id="export-table">
                 <thead>
@@ -42,6 +44,10 @@
                         <th>Latitud</th>
                         <th>Longitud</th>
                         <th>Elevación (m)</th>
+                        <!-- NUEVO: Agregar (m) a UTMX y UTMY -->
+                        <th>UTMX (m)</th>
+                        <th>UTMY (m)</th>
+                        <th>Zona UTM</th>
                     </tr>
                 </thead>
                 <tbody id="export-table-body">
@@ -50,8 +56,10 @@
             </table>
             <div class="modal-buttons">
                 <button id="copy-btn">Copiar</button>
-                <button id="csv-btn">Exportar CSV</button>
-                <button id="kml-btn">Exportar KML</button>
+                <!-- NUEVO: Cambiar "Exportar" por "Descargar" -->
+                <button id="csv-btn">Descargar CSV</button>
+                <button id="kml-btn">Descargar KML</button>
+                <!-- NUEVO: Quitar botones duplicados de GeoJSON y XLS del centro y mantener solo aquí -->
             </div>
         </div>
     </div>

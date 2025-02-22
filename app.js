@@ -350,6 +350,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'Desconocido';
     }
 
+    // NUEVO: Función para convertir coordenadas geográficas a UTM
+    function convertToUTM(lat, lon) {
+        const zone = Math.floor((lon + 180) / 6) + 1;
+        const isSouth = lat < 0 ? ' +south' : '';
+        const utmProj = `+proj=utm +zone=${zone}${isSouth} +datum=WGS84 +units=m +no_defs`;
+
+        const utmCoords = proj4('WGS84', utmProj, [lon, lat]);
+        return {
+            utmX: utmCoords[0].toFixed(2), // Redondear a 2 decimales
+            utmY: utmCoords[1].toFixed(2),
+            utmZone: `${zone}${isSouth.trim() === ' +south' ? 'S' : 'N'}`
+        };
+    }
+
     // Updated function to get elevation with improved error handling and fallback
     async function getElevation(lat, lng) {
         const apis = [
@@ -359,10 +373,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         for (const apiUrl of apis) {
             try {
-                const response = await fetch(apiUrl);
+                const response = await fetch(apiUrl, {
+                    // NUEVO: Añadir timeout para evitar bloqueos largos
+                    signal: AbortSignal.timeout(5000) // 5 segundos de timeout
+                });
                 
                 if (!response.ok) {
-                    console.warn(`API request failed: ${apiUrl}`);
+                    console.warn(`API request failed: ${apiUrl} (Status: ${response.status})`);
                     continue;
                 }
                 
@@ -370,22 +387,38 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Handle Open Elevation API response
                 if (data.results && data.results.length > 0 && data.results[0].elevation !== undefined) {
-                    return data.results[0].elevation;
+                    const elevation = data.results[0].elevation;
+                    if (elevation === null || isNaN(elevation)) {
+                        console.warn(`NoData o valor inválido para elevación en ${lat},${lng}`);
+                        return 0; // Valor predeterminado si no hay datos
+                    }
+                    return elevation;
                 }
                 
                 // Handle USGS National Map API response
                 if (data.value !== undefined) {
-                    return data.value;
+                    const elevation = data.value;
+                    if (elevation === null || isNaN(elevation)) {
+                        console.warn(`NoData o valor inválido para elevación en ${lat},${lng}`);
+                        return 0; // Valor predeterminado si no hay datos
+                    }
+                    return elevation;
                 }
             } catch (error) {
-                console.warn(`Error fetching elevation from ${apiUrl}:`, error);
+                if (error.name === 'AbortError') {
+                    console.warn(`Timeout fetching elevation from ${apiUrl}`);
+                } else {
+                    console.warn(`Error fetching elevation from ${apiUrl}:`, error);
+                }
             }
         }
         
-        return 'N/A';
+        // NUEVO: Mejor manejo de errores con log detallado
+        console.error(`No se pudo obtener elevación para ${lat},${lng} después de intentar todas las APIs`);
+        return 0; // Retornar 0 como valor predeterminado si falla todo
     }
 
-    // Function to generate coordinate data with elevation
+    // Function to generate coordinate data with elevation and UTM
     async function generateCoordinateData() {
         const coordinateData = [];
         let polygonCounter = 1;
@@ -406,6 +439,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             lat: point.lat.toFixed(6),
                             lng: point.lng.toFixed(6),
                             elevationPromise: getElevation(point.lat, point.lng)
+                            // NUEVO: Agregar coordenadas UTM
                         });
                     });
                     polygonCounter++;
@@ -419,6 +453,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             lat: point.lat.toFixed(6),
                             lng: point.lng.toFixed(6),
                             elevationPromise: getElevation(point.lat, point.lng)
+                            // NUEVO: Agregar coordenadas UTM
                         });
                     });
                     polylineCounter++;
@@ -431,6 +466,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         lat: point.lat.toFixed(6),
                         lng: point.lng.toFixed(6),
                         elevationPromise: getElevation(point.lat, point.lng)
+                        // NUEVO: Agregar coordenadas UTM
                     });
                     pointCounter++;
                 }
@@ -439,15 +475,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Resolve elevation promises
+        // Resolve elevation promises and add UTM coordinates
         const resolvedData = await Promise.all(
-            coordinateData.map(async (data) => ({
-                ...data,
-                elevation: await data.elevationPromise
-            }))
+            coordinateData.map(async (data) => {
+                const elevation = await data.elevationPromise;
+                // NUEVO: Convertir a UTM
+                const utm = convertToUTM(parseFloat(data.lat), parseFloat(data.lng));
+                return {
+                    ...data,
+                    elevation: elevation,
+                    utmX: utm.utmX,
+                    utmY: utm.utmY,
+                    utmZone: utm.utmZone,
+                    elevationPromise: undefined // Limpiar la promesa resuelta
+                };
+            })
         );
 
-        return resolvedData.map(({ elevationPromise, ...rest }) => rest);
+        return resolvedData;
     }
 
     // Function to populate export modal
@@ -467,6 +512,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${data.lat}</td>
                 <td>${data.lng}</td>
                 <td>${data.elevation}</td>
+                <!-- NUEVO: Agregar columnas UTM con (m) -->
+                <td>${data.utmX}</td>
+                <td>${data.utmY}</td>
+                <td>${data.utmZone}</td>
             `;
             exportTableBody.appendChild(row);
         });
@@ -578,7 +627,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             coordinates: featureType === 'Polígono' ? [currentCoordinates] : currentCoordinates
                         },
                         properties: {
-                            name: `${currentFeature} ${features.length + 1}`
+                            name: `${currentFeature} ${features.length + 1}`,
+                            // NUEVO: Agregar propiedades UTM
+                            utmX: currentCoordinates[0] ? convertToUTM(currentCoordinates[0][1], currentCoordinates[0][0]).utmX : '',
+                            utmY: currentCoordinates[0] ? convertToUTM(currentCoordinates[0][1], currentCoordinates[0][0]).utmY : '',
+                            utmZone: currentCoordinates[0] ? convertToUTM(currentCoordinates[0][1], currentCoordinates[0][0]).utmZone : ''
                         }
                     };
                     features.push(featureObj);
@@ -603,7 +656,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         coordinates: currentCoordinates
                     },
                     properties: {
-                        name: `${currentFeature} ${features.length + 1}`
+                        name: `${currentFeature} ${features.length + 1}`,
+                        // NUEVO: Agregar propiedades UTM
+                        utmX: data.utmX,
+                        utmY: data.utmY,
+                        utmZone: data.utmZone
                     }
                 };
                 features.push(featureObj);
@@ -622,7 +679,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     coordinates: currentFeature === 'Polígono' ? [currentCoordinates] : currentCoordinates
                 },
                 properties: {
-                    name: `${currentFeature} ${features.length + 1}`
+                    name: `${currentFeature} ${features.length + 1}`,
+                    // NUEVO: Agregar propiedades UTM
+                    utmX: currentCoordinates[0] ? convertToUTM(currentCoordinates[0][1], currentCoordinates[0][0]).utmX : '',
+                    utmY: currentCoordinates[0] ? convertToUTM(currentCoordinates[0][1], currentCoordinates[0][0]).utmY : '',
+                    utmZone: currentCoordinates[0] ? convertToUTM(currentCoordinates[0][1], currentCoordinates[0][0]).utmZone : ''
                 }
             };
             features.push(featureObj);
@@ -654,7 +715,7 @@ document.addEventListener('DOMContentLoaded', () => {
     copyBtn.addEventListener('click', async () => {
         const coordinateData = await generateCoordinateData();
         const clipboardText = coordinateData.map(data => 
-            `${data.type}\t${data.vertices}\t${data.lat}\t${data.lng}\t${data.elevation}`
+            `${data.type}\t${data.vertices}\t${data.lat}\t${data.lng}\t${data.elevation}\t${data.utmX}\t${data.utmY}\t${data.utmZone}`
         ).join('\n');
         
         navigator.clipboard.writeText(clipboardText).then(() => {
@@ -667,9 +728,9 @@ document.addEventListener('DOMContentLoaded', () => {
     csvBtn.addEventListener('click', async () => {
         const coordinateData = await generateCoordinateData();
         const csvContent = [
-            'Tipo,Vértices,Latitud,Longitud,Elevación',
+            'Tipo,Vértices,Latitud,Longitud,Elevación,UTMX (m),UTMY (m),Zona UTM',
             ...coordinateData.map(data => 
-                `${data.type},${data.vertices},${data.lat},${data.lng},${data.elevation}`
+                `${data.type},${data.vertices},${data.lat},${data.lng},${data.elevation},${data.utmX},${data.utmY},${data.utmZone}`
             )
         ].join('\n');
 
@@ -700,10 +761,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(link);
     });
 
-    // Add GeoJSON export button
+    // NUEVO: Añadir botón de Descargar GeoJSON
     const geojsonBtn = document.createElement('button');
     geojsonBtn.id = 'geojson-btn';
-    geojsonBtn.textContent = 'Exportar GeoJSON';
+    geojsonBtn.textContent = 'Descargar GeoJSON'; // NUEVO: Cambiar a "Descargar"
     document.querySelector('.modal-buttons').appendChild(geojsonBtn);
 
     // Add event listener for GeoJSON export
@@ -722,10 +783,10 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.removeChild(link);
     });
 
-    // Add XLS export button
+    // NUEVO: Añadir botón de Descargar XLS
     const xlsBtn = document.createElement('button');
     xlsBtn.id = 'xls-btn';
-    xlsBtn.textContent = 'Exportar XLS';
+    xlsBtn.textContent = 'Descargar XLS'; // NUEVO: Cambiar a "Descargar"
     document.querySelector('.modal-buttons').appendChild(xlsBtn);
 
     // Add event listener for XLS export
@@ -738,7 +799,11 @@ document.addEventListener('DOMContentLoaded', () => {
             'Vértices': data.vertices,
             'Latitud': data.lat,
             'Longitud': data.lng,
-            'Elevación': data.elevation
+            'Elevación': data.elevation,
+            // NUEVO: Agregar columnas UTM con (m)
+            'UTMX (m)': data.utmX,
+            'UTMY (m)': data.utmY,
+            'Zona UTM': data.utmZone
         })));
 
         // Create workbook
