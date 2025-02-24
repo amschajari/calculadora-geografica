@@ -48,40 +48,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Variable para rastrear el estado de edición
     let isEditMode = false;
 
-    // Función para reiniciar el control de dibujo
-    function resetDrawControl() {
-        // Eliminar el control de dibujo existente
-        map.removeControl(drawControl);
-        
-        // Recrear el control de dibujo con todas las herramientas
-        drawControl = new L.Control.Draw({
-            draw: {
-                polygon: true,
-                polyline: true,
-                circle: false,
-                rectangle: false,
-                circlemarker: true,
-                marker: false
-            },
-            edit: {
-                featureGroup: drawnItems
-            }
-        });
-        
-        // Agregar nuevo control
-        map.addControl(drawControl);
-        
-        // Desactivar modo de edición si estaba activo
-        if (isEditMode) {
-            isEditMode = false;
-            document.getElementById('edit-btn').textContent = 'Editar'; 
-        }
-    }
-
     // Botón de limpiar marcadores
     document.getElementById('clear-btn').addEventListener('click', () => {
         drawnItems.clearLayers();
-        resetDrawControl(); // Restaurar todas las herramientas de dibujo
+        // NUEVO: Mostrar "Info: Sin datos" al limpiar marcadores
+        document.getElementById('info-display').textContent = 'Info: Sin datos';
     });
 
     // Botón de editar
@@ -90,24 +61,37 @@ document.addEventListener('DOMContentLoaded', () => {
         isEditMode = !isEditMode;
 
         if (isEditMode) {
-            // Configurar control de edición
+            // CORREGIDO: Configurar control de edición manteniendo los botones de dibujo visibles
             map.removeControl(drawControl);
             drawControl = new L.Control.Draw({
-                draw: false,
+                draw: {
+                    polygon: true, // Mantener todos los tipos de dibujo habilitados
+                    polyline: true,
+                    circle: false,
+                    rectangle: false,
+                    circlemarker: true,
+                    marker: false
+                },
                 edit: {
                     featureGroup: drawnItems,
                     remove: true
                 }
             });
             map.addControl(drawControl);
-            document.getElementById('edit-btn').textContent = 'Terminar edición';
-            
+
+            // NUEVO: Deshabilitar los handlers de dibujo para evitar dibujar, pero mantener los botones visibles
+            drawControl._toolbars.draw._modes.polygon.handler.disable();
+            drawControl._toolbars.draw._modes.polyline.handler.disable();
+            drawControl._toolbars.draw._modes.circlemarker.handler.disable();
+
             // Activar edición de características existentes
             drawnItems.eachLayer((layer) => {
                 if (layer instanceof L.Polygon || layer instanceof L.Polyline || layer instanceof L.CircleMarker) {
                     layer.editing.enable();
                 }
             });
+
+            document.getElementById('edit-btn').textContent = 'Terminar edición';
         } else {
             // Desactivar edición de todas las características
             drawnItems.eachLayer((layer) => {
@@ -116,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             
-            // Restaurar control de dibujo normal
+            // CORREGIDO: Restaurar control de dibujo normal manteniendo todos los botones visibles
             map.removeControl(drawControl);
             drawControl = new L.Control.Draw({
                 draw: {
@@ -133,6 +117,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             map.addControl(drawControl);
             
+            // NUEVO: Habilitar los handlers de dibujo para restaurar el modo normal
+            drawControl._toolbars.draw._modes.polygon.handler.enable();
+            drawControl._toolbars.draw._modes.polyline.handler.enable();
+            drawControl._toolbars.draw._modes.circlemarker.handler.enable();
+
             // Asegurar que el botón vuelva a su estado original
             document.getElementById('edit-btn').textContent = 'Editar';
         }
@@ -182,26 +171,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Función para manejar los botones de dibujo
+    // NUEVO: Función corregida para configurar el tipo de dibujo sin ocultar botones ni reiniciar el control
     function setupDrawButton(buttonId, drawType) {
         document.getElementById(buttonId).addEventListener('click', () => {
-            // Salir del modo de edición si estaba activo
-            if (isEditMode) {
-                document.getElementById('edit-btn').click(); // Simular clic en botón de edición
+            // CORREGIDO: Mantener el control de dibujo existente y solo habilitar el tipo de dibujo específico
+            if (drawControl) {
+                map.removeControl(drawControl);
             }
-            
-            // Recrear el control de dibujo con todas las herramientas
-            resetDrawControl();
-            
-            // Modificar el control para enfocarse en el tipo de dibujo específico
-            map.removeControl(drawControl);
+            // Crear un nuevo control con todos los tipos de dibujo habilitados
             drawControl = new L.Control.Draw({
                 draw: {
-                    polygon: drawType === 'polygon',
-                    polyline: drawType === 'polyline',
+                    polygon: true,
+                    polyline: true,
                     circle: false,
                     rectangle: false,
-                    circlemarker: drawType === 'circlemarker',
+                    circlemarker: true,
                     marker: false
                 },
                 edit: {
@@ -209,6 +193,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             map.addControl(drawControl);
+
+            // NUEVO: Habilitar solo el tipo de dibujo específico, manteniendo los otros botones visibles
+            drawControl._toolbars.draw._modes.polygon.handler.disable();
+            drawControl._toolbars.draw._modes.polyline.handler.disable();
+            drawControl._toolbars.draw._modes.circlemarker.handler.disable();
+
+            if (drawType === 'polygon') {
+                drawControl._toolbars.draw._modes.polygon.handler.enable();
+            } else if (drawType === 'polyline') {
+                drawControl._toolbars.draw._modes.polyline.handler.enable();
+            } else if (drawType === 'circlemarker') {
+                drawControl._toolbars.draw._modes.circlemarker.handler.enable();
+            }
         });
     }
 
@@ -250,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (layer instanceof L.CircleMarker) {
             const coords = layer.getLatLng();
-            return `Coordenadas: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
+            return `Coordenada: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
         }
         
         return '';
@@ -276,7 +273,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Manejar eventos de dibujo
+    // Manejar eventos de dibujo y mostrar información en la pantalla
     map.on(L.Draw.Event.CREATED, (e) => {
         const layer = e.layer;
         drawnItems.addLayer(layer);
@@ -285,10 +282,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (resultText) {
             layer.bindPopup(resultText).openPopup();
+            // NUEVO: Mostrar el mismo texto en el elemento #info-display
+            document.getElementById('info-display').textContent = resultText;
+        } else {
+            // NUEVO: Mostrar "Info: Sin datos" si no hay resultado
+            document.getElementById('info-display').textContent = 'Info: Sin datos';
         }
-        
-        // Restaurar todas las herramientas de dibujo después de crear una entidad
-        resetDrawControl();
     });
 
     // Búsqueda de ubicaciones
@@ -364,57 +363,81 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Updated function to get elevation with improved error handling and fallback
+    // Updated function to get elevation with improved error handling, debugging, and fallback
     async function getElevation(lat, lng) {
+        console.log(`Solicitando elevación para lat: ${lat}, lng: ${lng}`); // NUEVO: Log para depuración
         const apis = [
             `https://api.open-elevation.com/api/v1/lookup?locations=${lat},${lng}`,
-            `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/identify?geometryType=esriGeometryPoint&geometry=${lng},${lat}&returnGeometry=false&returnZ=true&f=json`
+            `https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/identify?geometryType=esriGeometryPoint&geometry=${lng},${lat}&returnGeometry=false&returnZ=true&f=json`,
+            // NUEVO: Ejemplo con Google Elevation (requiere API key, descomentar y reemplazar YOUR_API_KEY)
+            // `https://maps.googleapis.com/maps/api/elevation/json?locations=${lat},${lng}&key=YOUR_API_KEY`
         ];
 
         for (const apiUrl of apis) {
             try {
                 const response = await fetch(apiUrl, {
-                    // NUEVO: Añadir timeout para evitar bloqueos largos
-                    signal: AbortSignal.timeout(5000) // 5 segundos de timeout
+                    signal: AbortSignal.timeout(10000) // NUEVO: 10 segundos de timeout
                 });
                 
                 if (!response.ok) {
-                    console.warn(`API request failed: ${apiUrl} (Status: ${response.status})`);
+                    console.warn(`API request failed: ${apiUrl} (Status: ${response.status}, Status Text: ${response.statusText})`);
                     continue;
                 }
                 
                 const data = await response.json();
-                
-                // Handle Open Elevation API response
-                if (data.results && data.results.length > 0 && data.results[0].elevation !== undefined) {
-                    const elevation = data.results[0].elevation;
-                    if (elevation === null || isNaN(elevation)) {
-                        console.warn(`NoData o valor inválido para elevación en ${lat},${lng}`);
-                        return 0; // Valor predeterminado si no hay datos
+                console.log(`Respuesta completa de ${apiUrl}:`, data); // NUEVO: Log de la respuesta
+
+                // Open Elevation
+                if (apiUrl.includes('open-elevation')) {
+                    if (data.results && data.results.length > 0 && data.results[0].elevation !== undefined) {
+                        const elevation = data.results[0].elevation;
+                        if (elevation === null || isNaN(elevation)) {
+                            console.warn(`NoData o valor inválido desde Open Elevation para ${lat},${lng}`);
+                            continue;
+                        }
+                        console.log(`Elevación obtenida de Open Elevation: ${elevation} m`);
+                        return elevation;
                     }
-                    return elevation;
                 }
-                
-                // Handle USGS National Map API response
-                if (data.value !== undefined) {
-                    const elevation = data.value;
-                    if (elevation === null || isNaN(elevation)) {
-                        console.warn(`NoData o valor inválido para elevación en ${lat},${lng}`);
-                        return 0; // Valor predeterminado si no hay datos
+
+                // USGS National Map
+                if (apiUrl.includes('nationalmap')) {
+                    if (data.value !== undefined) {
+                        const elevation = data.value;
+                        if (elevation === null || isNaN(elevation)) {
+                            console.warn(`NoData o valor inválido desde USGS para ${lat},${lng}`);
+                            continue;
+                        }
+                        console.log(`Elevación obtenida de USGS: ${elevation} m`);
+                        return elevation;
                     }
-                    return elevation;
                 }
+
+                // Google Elevation (descomentar y reemplazar YOUR_API_KEY si se usa)
+                /*
+                if (apiUrl.includes('maps.googleapis')) {
+                    if (data.results && data.results.length > 0) {
+                        const elevation = data.results[0].elevation;
+                        if (elevation === null || isNaN(elevation)) {
+                            console.warn(`NoData o valor inválido desde Google para ${lat},${lng}`);
+                            continue;
+                        }
+                        console.log(`Elevación obtenida de Google: ${elevation} m`);
+                        return elevation;
+                    }
+                }
+                */
             } catch (error) {
                 if (error.name === 'AbortError') {
-                    console.warn(`Timeout fetching elevation from ${apiUrl}`);
+                    console.warn(`Timeout fetching elevation from ${apiUrl} después de 10 segundos`);
                 } else {
-                    console.warn(`Error fetching elevation from ${apiUrl}:`, error);
+                    console.error(`Error fetching elevation from ${apiUrl}:`, error);
                 }
             }
         }
         
-        // NUEVO: Mejor manejo de errores con log detallado
-        console.error(`No se pudo obtener elevación para ${lat},${lng} después de intentar todas las APIs`);
+        // NUEVO: Log detallado si no se obtiene elevación
+        console.error(`No se pudo obtener elevación para lat: ${lat}, lng: ${lng} después de intentar todas las APIs`);
         return 0; // Retornar 0 como valor predeterminado si falla todo
     }
 
@@ -701,6 +724,69 @@ document.addEventListener('DOMContentLoaded', () => {
         if (drawnItems.getLayers().length > 0) {
             await populateExportModal();
             exportModal.style.display = 'block';
+            // CORREGIDO: Asegurar que los botones se añadan y sean funcionales en .modal-buttons
+            const modalButtons = document.querySelector('.modal-buttons');
+
+            // Añadir o actualizar botón "Descargar GeoJSON"
+            let geojsonBtn = document.querySelector('#geojson-btn');
+            if (!geojsonBtn) {
+                geojsonBtn = document.createElement('button');
+                geojsonBtn.id = 'geojson-btn';
+                geojsonBtn.textContent = 'Descargar GeoJSON';
+                modalButtons.appendChild(geojsonBtn);
+            }
+            // Asegurar que el event listener esté correctamente asignado
+            geojsonBtn.removeEventListener('click', geojsonBtn.clickHandler); // Eliminar listener previo si existe
+            geojsonBtn.clickHandler = async () => {
+                const coordinateData = await generateCoordinateData();
+                const geoJSONContent = generateGeoJSON(coordinateData);
+
+                const blob = new Blob([JSON.stringify(geoJSONContent, null, 2)], { type: 'application/geo+json' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', 'coordenadas_exportadas.geojson');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+            geojsonBtn.addEventListener('click', geojsonBtn.clickHandler);
+
+            // Añadir o actualizar botón "Descargar XLS"
+            let xlsBtn = document.querySelector('#xls-btn');
+            if (!xlsBtn) {
+                xlsBtn = document.createElement('button');
+                xlsBtn.id = 'xls-btn';
+                xlsBtn.textContent = 'Descargar XLS';
+                modalButtons.appendChild(xlsBtn);
+            }
+            // Asegurar que el event listener esté correctamente asignado
+            xlsBtn.removeEventListener('click', xlsBtn.clickHandler); // Eliminar listener previo si existe
+            xlsBtn.clickHandler = async () => {
+                const coordinateData = await generateCoordinateData();
+                
+                // Prepare data for Excel export
+                const worksheet = XLSX.utils.json_to_sheet(coordinateData.map(data => ({
+                    'Tipo': data.type,
+                    'Vértices': data.vertices,
+                    'Latitud': data.lat,
+                    'Longitud': data.lng,
+                    'Elevación': data.elevation,
+                    // NUEVO: Agregar columnas UTM con (m)
+                    'UTMX (m)': data.utmX,
+                    'UTMY (m)': data.utmY,
+                    'Zona UTM': data.utmZone
+                })));
+
+                // Create workbook
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, 'Coordenadas');
+
+                // Export file
+                XLSX.writeFile(workbook, 'coordenadas_exportadas.xlsx');
+            };
+            xlsBtn.addEventListener('click', xlsBtn.clickHandler);
         } else {
             alert('No hay elementos para exportar');
         }
@@ -759,59 +845,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-    });
-
-    // NUEVO: Añadir botón de Descargar GeoJSON
-    const geojsonBtn = document.createElement('button');
-    geojsonBtn.id = 'geojson-btn';
-    geojsonBtn.textContent = 'Descargar GeoJSON'; // NUEVO: Cambiar a "Descargar"
-    document.querySelector('.modal-buttons').appendChild(geojsonBtn);
-
-    // Add event listener for GeoJSON export
-    geojsonBtn.addEventListener('click', async () => {
-        const coordinateData = await generateCoordinateData();
-        const geoJSONContent = generateGeoJSON(coordinateData);
-
-        const blob = new Blob([JSON.stringify(geoJSONContent, null, 2)], { type: 'application/geo+json' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'coordenadas_exportadas.geojson');
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    });
-
-    // NUEVO: Añadir botón de Descargar XLS
-    const xlsBtn = document.createElement('button');
-    xlsBtn.id = 'xls-btn';
-    xlsBtn.textContent = 'Descargar XLS'; // NUEVO: Cambiar a "Descargar"
-    document.querySelector('.modal-buttons').appendChild(xlsBtn);
-
-    // Add event listener for XLS export
-    xlsBtn.addEventListener('click', async () => {
-        const coordinateData = await generateCoordinateData();
-        
-        // Prepare data for Excel export
-        const worksheet = XLSX.utils.json_to_sheet(coordinateData.map(data => ({
-            'Tipo': data.type,
-            'Vértices': data.vertices,
-            'Latitud': data.lat,
-            'Longitud': data.lng,
-            'Elevación': data.elevation,
-            // NUEVO: Agregar columnas UTM con (m)
-            'UTMX (m)': data.utmX,
-            'UTMY (m)': data.utmY,
-            'Zona UTM': data.utmZone
-        })));
-
-        // Create workbook
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Coordenadas');
-
-        // Export file
-        XLSX.writeFile(workbook, 'coordenadas_exportadas.xlsx');
     });
 
     // Close modal if clicked outside

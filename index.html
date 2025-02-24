@@ -29,6 +29,8 @@
         <button id="search-btn">BUSCAR</button>
     </div>
     <div id="map"></div>
+    <!-- NUEVO: Agregar elemento para mostrar la información debajo del mapa -->
+    <div id="info-display" class="info-display">Info: Sin datos</div>
 
     <!-- Coordinates Export Modal -->
     <div id="export-modal" class="modal">
@@ -44,7 +46,6 @@
                         <th>Latitud</th>
                         <th>Longitud</th>
                         <th>Elevación (m)</th>
-                        <!-- NUEVO: Agregar (m) a UTMX y UTMY -->
                         <th>UTMX (m)</th>
                         <th>UTMY (m)</th>
                         <th>Zona UTM</th>
@@ -56,10 +57,10 @@
             </table>
             <div class="modal-buttons">
                 <button id="copy-btn">Copiar</button>
-                <!-- NUEVO: Cambiar "Exportar" por "Descargar" -->
                 <button id="csv-btn">Descargar CSV</button>
                 <button id="kml-btn">Descargar KML</button>
-                <!-- NUEVO: Quitar botones duplicados de GeoJSON y XLS del centro y mantener solo aquí -->
+                <button id="geojson-btn">Descargar GeoJSON</button>
+                <button id="xls-btn">Descargar XLS</button>
             </div>
         </div>
     </div>

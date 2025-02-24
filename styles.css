@@ -277,3 +277,13 @@ header {
     margin-bottom: 10px;
     padding: 0 20px;
 }
+
+/* NUEVO: Estilos para el elemento de información debajo del mapa */
+.info-display {
+    width: 1110px; /* Mismo ancho que el mapa */
+    text-align: center;
+    font-weight: bold;
+    padding: 10px 0;
+    margin-top: 10px;
+    color: #333;
+}
