@@ -48,10 +48,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Variable para rastrear el estado de edición
     let isEditMode = false;
 
+    // NUEVO: Contador global para asignar números únicos a cada elemento dibujado, inicializado en 0 para que el primer elemento sea 1
+    let globalEntityCounter = 0;
+
     // Botón de limpiar marcadores
     document.getElementById('clear-btn').addEventListener('click', () => {
         drawnItems.clearLayers();
-        // NUEVO: Mostrar "Info: Sin datos" al limpiar marcadores
+        // CORREGIDO: Reiniciar el contador global a 0 (para que el próximo elemento sea 1) y mostrar "Info: Sin datos" al limpiar marcadores
+        globalEntityCounter = 0;
         document.getElementById('info-display').textContent = 'Info: Sin datos';
     });
 
@@ -278,6 +282,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const layer = e.layer;
         drawnItems.addLayer(layer);
 
+        // CORREGIDO: Incrementar el contador global para cada nuevo elemento dibujado y comenzar desde 1
+        globalEntityCounter++;
+        // NUEVO: Asegurar que el valor sea al menos 1 para el primer elemento
+        if (globalEntityCounter === 0) globalEntityCounter = 1;
+
         let resultText = getMeasurementText(layer);
         
         if (resultText) {
@@ -441,14 +450,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return 0; // Retornar 0 como valor predeterminado si falla todo
     }
 
-    // Function to generate coordinate data with elevation and UTM
+    // CORREGIDO: Function to generate coordinate data with elevation, UTM, and unique entity numbering per element
     async function generateCoordinateData() {
         const coordinateData = [];
-        let polygonCounter = 1;
-        let polylineCounter = 1;
-        let pointCounter = 1;
+        // CORREGIDO: Usar un contador local para mantener la numeración por elemento, no por vértice
+        let localEntityCounter = 0;
 
         drawnItems.eachLayer((layer) => {
+            localEntityCounter++; // Incrementar para cada nuevo elemento (polígono, polilínea, punto)
             const type = getLayerType(layer);
             
             try {
@@ -456,7 +465,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const coords = layer.getLatLngs()[0];
                     coords.forEach((point, pointIndex) => {
                         coordinateData.push({
-                            entityNumber: polygonCounter,
+                            entityNumber: localEntityCounter, // Usar el contador local para el elemento completo
                             type: type,
                             vertices: pointIndex + 1,
                             lat: point.lat.toFixed(6),
@@ -465,12 +474,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             // NUEVO: Agregar coordenadas UTM
                         });
                     });
-                    polygonCounter++;
                 } else if (type === 'Línea') {
                     const coords = layer.getLatLngs();
                     coords.forEach((point, pointIndex) => {
                         coordinateData.push({
-                            entityNumber: polylineCounter,
+                            entityNumber: localEntityCounter, // Usar el contador local para el elemento completo
                             type: type,
                             vertices: pointIndex + 1,
                             lat: point.lat.toFixed(6),
@@ -479,11 +487,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             // NUEVO: Agregar coordenadas UTM
                         });
                     });
-                    polylineCounter++;
                 } else if (type === 'Punto') {
                     const point = layer.getLatLng();
                     coordinateData.push({
-                        entityNumber: pointCounter,
+                        entityNumber: localEntityCounter, // Usar el contador local para el elemento completo
                         type: type,
                         vertices: 1,
                         lat: point.lat.toFixed(6),
@@ -491,7 +498,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         elevationPromise: getElevation(point.lat, point.lng)
                         // NUEVO: Agregar coordenadas UTM
                     });
-                    pointCounter++;
                 }
             } catch (error) {
                 console.error(`Error processing layer of type ${type}:`, error);
@@ -726,7 +732,7 @@ document.addEventListener('DOMContentLoaded', () => {
             exportModal.style.display = 'block';
             // CORREGIDO: Asegurar que los botones se añadan y sean funcionales en .modal-buttons
             const modalButtons = document.querySelector('.modal-buttons');
-
+            
             // Añadir o actualizar botón "Descargar GeoJSON"
             let geojsonBtn = document.querySelector('#geojson-btn');
             if (!geojsonBtn) {
